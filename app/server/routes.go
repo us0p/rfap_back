@@ -21,13 +21,31 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
+func withCORS(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+		// handle preflight request
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		h.ServeHTTP(w, r)
+	})
+}
+
 func Server(port string, db *mongo.Database) error {
-	http.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, `{"health": "OK"}`)
 	})
 
-	http.HandleFunc("POST /login", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /login", func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]string
 		defer r.Body.Close()
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -97,7 +115,7 @@ func Server(port string, db *mongo.Database) error {
 		return
 	})
 
-	http.HandleFunc("POST /signup", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /signup", func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]string
 		defer r.Body.Close()
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -157,7 +175,7 @@ func Server(port string, db *mongo.Database) error {
 	})
 
 	log.Printf("Starting server on port: %s\n", port)
-	return http.ListenAndServe(port, nil)
+	return http.ListenAndServe(port, withCORS(mux))
 }
 
 func isUserNumberDuplicated(coll *mongo.Collection, number string) (bool, error) {
